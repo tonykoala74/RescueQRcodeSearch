@@ -5,14 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>救災人員憑證領取</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
         body { font-family: -apple-system, sans-serif; background-color: #f0f2f5; text-align: center; padding: 20px; }
         .container { max-width: 400px; margin: auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
         input { width: 90%; padding: 15px; margin: 15px 0; border: 2px solid #ddd; border-radius: 10px; font-size: 18px; text-transform: uppercase; }
         button { background-color: #d32f2f; color: white; border: none; padding: 15px; width: 100%; border-radius: 10px; font-size: 20px; font-weight: bold; cursor: pointer; }
-        #passArea { display: none; margin-top: 20px; border-top: 2px dashed #eee; padding-top: 20px; }
-        #qrcode { margin: 20px auto; display: inline-block; }
-        .uid-display { font-size: 1.5em; font-weight: bold; color: #333; background: #eee; padding: 5px 15px; border-radius: 5px; }
+        
+        /* 通行證樣式 */
+        #passArea { display: none; margin-top: 20px; }
+        #captureTarget { background: white; padding: 20px; border-radius: 15px; border: 1px solid #eee; }
+        .info-label { color: #666; font-size: 0.9em; margin-bottom: 2px; }
+        .info-value { font-size: 1.6em; font-weight: bold; color: #333; margin-bottom: 10px; }
+        #qrcode { margin: 15px auto; display: inline-block; }
+        
+        /* 截圖結果顯示 */
+        #downloadArea { display: none; margin-top: 20px; background: #fffbe6; padding: 15px; border-radius: 10px; border: 1px solid #ffe58f; }
+        #resultImg { width: 100%; border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
     </style>
 </head>
 <body>
@@ -21,55 +30,88 @@
             <h2>憑證領取</h2>
             <p>請輸入身分證字號查詢</p>
             <input type="text" id="idInput" placeholder="A123456789" maxlength="10">
-            <button onclick="fetchUID()">查詢並領取</button>
+            <button id="mainBtn" onclick="fetchData()">查詢並領取</button>
             <p id="msg" style="color: red;"></p>
         </div>
 
         <div id="passArea">
-            <h2 style="color: #d32f2f;">數位通行證</h2>
-            <div id="uidText" class="uid-display"></div>
-            <div id="qrcode"></div>
-            <p style="color: #666;">請截圖存入相簿</p>
-            <button style="background-color: #ff5722;" onclick="window.print()">一鍵截圖儲存</button>
+            <div id="captureTarget">
+                <h2 style="color: #d32f2f; margin-top:0;">救災人員數位通行證</h2>
+                <div class="info-label">姓名</div>
+                <div id="nameText" class="info-value">---</div>
+                <div class="info-label">身分證字號</div>
+                <div id="idText" class="info-value">---</div>
+                <div id="qrcode"></div>
+                <p style="font-size: 0.8em; color: #999;">生成時間：<span id="timeText"></span></p>
+            </div>
+            
+            <p style="color: #666; font-size: 0.9em; margin-top: 20px;">請點擊按鈕產生憑證圖：</p>
+            <button style="background-color: #ff5722;" onclick="generateImage()">點我產生憑證圖</button>
+        </div>
+
+        <div id="downloadArea">
+            <p style="color: #d32f2f; font-weight: bold;">[長按下方圖片] 選擇儲存至相簿</p>
+            <img id="resultImg" src="" alt="請長按儲存">
+            <p style="font-size: 0.8em; color: #888; margin-top: 10px;">儲存後，現場斷網亦可出示憑證</p>
         </div>
     </div>
 
     <script>
-        const GAS_URL = "https://script.google.com/macros/s/AKfycbz_L2NidT117TndleNl1wlutXsyUrHi38AhZWuOoIdCt_y7KNQG5ZF92rOo4H405smb_w/exec"; // 這裡換成您的 GAS 網址
+        const GAS_URL = "YOUR_GAS_URL"; // 請更換為您的 GAS 網址
 
-        async function fetchUID() {
+        async function fetchData() {
             const id = document.getElementById('idInput').value.trim().toUpperCase();
-            if(!id) return alert("請輸入字號");
+            if(!id) return alert("請輸入身分證字號");
             
-            document.getElementById('msg').innerText = "搜尋中...";
+            document.getElementById('mainBtn').disabled = true;
+            document.getElementById('msg').innerText = "連線搜尋中...";
             
             try {
                 const response = await fetch(`${GAS_URL}?id=${id}`);
                 const data = await response.json();
                 
-                if(data.uid) {
-                    showPass(data.uid);
+                if(data.uid) { // 假設後端回傳物件包含 uid, name, personalId
+                    showPass(data.uid, data.name, id);
                 } else {
-                    document.getElementById('msg').innerText = "找不到紀錄，請確認身分證字號。";
+                    alert("找不到紀錄，請確認身分證字號正確或已報到。");
+                    document.getElementById('mainBtn').disabled = false;
+                    document.getElementById('msg').innerText = "";
                 }
             } catch (e) {
-                document.getElementById('msg').innerText = "連線失敗，請檢查網路。";
+                alert("伺服器連線失敗，請檢查訊號。");
+                document.getElementById('mainBtn').disabled = false;
             }
         }
 
-        function showPass(uid) {
+        function showPass(uid, name, personalId) {
             document.getElementById('searchArea').style.display = 'none';
             document.getElementById('passArea').style.display = 'block';
-            document.getElementById('uidText').innerText = uid;
             
-            // 在手機本地直接生成 QR Code
+            document.getElementById('nameText').innerText = name;
+            document.getElementById('idText').innerText = personalId;
+            document.getElementById('timeText').innerText = new Date().toLocaleString();
+            
+            // 清除舊的 QR Code 並重新生成
+            document.getElementById("qrcode").innerHTML = "";
             new QRCode(document.getElementById("qrcode"), {
                 text: uid,
                 width: 200,
-                height: 200
+                height: 200,
+                correctLevel : QRCode.CorrectLevel.H
+            });
+        }
+
+        function generateImage() {
+            const target = document.getElementById('captureTarget');
+            // 將畫面轉為圖片並顯示
+            html2canvas(target, { scale: 2 }).then(canvas => {
+                const imgData = canvas.toDataURL("image/png");
+                document.getElementById('resultImg').src = imgData;
+                document.getElementById('passArea').style.display = 'none';
+                document.getElementById('downloadArea').style.display = 'block';
+                window.scrollTo(0, 0);
             });
         }
     </script>
 </body>
-
 </html>
