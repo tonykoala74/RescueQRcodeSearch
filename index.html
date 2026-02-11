@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>救災人員憑證領取</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background-color: #f0f2f5; text-align: center; padding: 20px; }
+        .container { max-width: 400px; margin: auto; background: white; padding: 25px; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
+        input { width: 90%; padding: 15px; margin: 15px 0; border: 2px solid #ddd; border-radius: 10px; font-size: 18px; text-transform: uppercase; }
+        button { background-color: #d32f2f; color: white; border: none; padding: 15px; width: 100%; border-radius: 10px; font-size: 20px; font-weight: bold; cursor: pointer; }
+        #passArea { display: none; margin-top: 20px; border-top: 2px dashed #eee; padding-top: 20px; }
+        #qrcode { margin: 20px auto; display: inline-block; }
+        .uid-display { font-size: 1.5em; font-weight: bold; color: #333; background: #eee; padding: 5px 15px; border-radius: 5px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="searchArea">
+            <h2>憑證領取</h2>
+            <p>請輸入身分證字號查詢</p>
+            <input type="text" id="idInput" placeholder="A123456789" maxlength="10">
+            <button onclick="fetchUID()">查詢並領取</button>
+            <p id="msg" style="color: red;"></p>
+        </div>
+
+        <div id="passArea">
+            <h2 style="color: #d32f2f;">數位通行證</h2>
+            <div id="uidText" class="uid-display"></div>
+            <div id="qrcode"></div>
+            <p style="color: #666;">請截圖存入相簿</p>
+            <button style="background-color: #ff5722;" onclick="window.print()">一鍵截圖儲存</button>
+        </div>
+    </div>
+
+    <script>
+        const GAS_URL = "YOUR_GAS_URL"; // 這裡換成您的 GAS 網址
+
+        async function fetchUID() {
+            const id = document.getElementById('idInput').value.trim().toUpperCase();
+            if(!id) return alert("請輸入字號");
+            
+            document.getElementById('msg').innerText = "搜尋中...";
+            
+            try {
+                const response = await fetch(`${GAS_URL}?id=${id}`);
+                const data = await response.json();
+                
+                if(data.uid) {
+                    showPass(data.uid);
+                } else {
+                    document.getElementById('msg').innerText = "找不到紀錄，請確認身分證字號。";
+                }
+            } catch (e) {
+                document.getElementById('msg').innerText = "連線失敗，請檢查網路。";
+            }
+        }
+
+        function showPass(uid) {
+            document.getElementById('searchArea').style.display = 'none';
+            document.getElementById('passArea').style.display = 'block';
+            document.getElementById('uidText').innerText = uid;
+            
+            // 在手機本地直接生成 QR Code
+            new QRCode(document.getElementById("qrcode"), {
+                text: uid,
+                width: 200,
+                height: 200
+            });
+        }
+    </script>
+</body>
+</html>
